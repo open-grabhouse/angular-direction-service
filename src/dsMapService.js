@@ -133,7 +133,8 @@
           function changeMapBoundsFunc() {
             that.getMap().fitBounds(that.bounds);
             that.getMap().setCenter(that.getLocation());
-            that.getMap().setZoom(that.getMap().getZoom() - 1);
+            that.getMap().setZoom(12);
+            //that.getMap().setZoom(that.getMap().getZoom() - 1);
           }
 
           that.mapDeferred = deferred;
@@ -169,36 +170,37 @@
       };
     return obj;
   }]).
-  directive('dsMapView', function() {
-      var obj = {
-        scope: {
-          mapSettings: "=",
-          originOptions: "=",
-          destinationOptions: "="
-        },
-        restrict: "E",
-        replace: true,
-        template: "<div></div>",
-        require: "^?dsMap",
-        link: function(scope, element, attrs, dsMapController) {
-          var map = new google.maps.Map(element[0], scope.mapSettings || dsMapController.mapSettings),
-            clonedOriginMarkerObject = angular.copy(scope.originOptions || {});
-          dsMapController.setMap(map);
-          dsMapController.isViewSet = true;
-          dsMapController.destinationOptions = angular.copy(scope.destinationOptions || {});
-          dsMapController.mapRendered.then(function() {
-            clonedOriginMarkerObject.position = dsMapController.getLocation();
-            setMarkerFunc(clonedOriginMarkerObject);
-          });
-        },
-        controller: ['$scope', function($scope) {
-          var that = this;
-          that.originOptions = $scope.originOptions;
-          that.destinationOptions = angular.copy($scope.destinationOptions);
-        }]
-      };
-      return obj;
-    }).directive('dsMapPlaces', ['$q', 'dsMapFactory', function($q, dsMapFactory) {
+  directive('dsMapView', [function() {
+    var obj = {
+      scope: {
+        mapSettings: "=",
+        originOptions: "=",
+        destinationOptions: "="
+      },
+      restrict: "E",
+      replace: true,
+      template: "<div></div>",
+      require: "^?dsMap",
+      link: function(scope, element, attrs, dsMapController) {
+        var map = new google.maps.Map(element[0], scope.mapSettings || dsMapController.mapSettings),
+          clonedOriginMarkerObject = angular.copy(scope.originOptions || {});
+        dsMapController.setMap(map);
+        dsMapController.isViewSet = true;
+        dsMapController.destinationOptions = angular.copy(scope.destinationOptions || {});
+        dsMapController.mapRendered.then(function() {
+          clonedOriginMarkerObject.position = dsMapController.getLocation();
+          setMarkerFunc(clonedOriginMarkerObject);
+        });
+      },
+      controller: ['$scope', function($scope) {
+        var that = this;
+        that.originOptions = $scope.originOptions;
+        that.destinationOptions = angular.copy($scope.destinationOptions);
+      }]
+    };
+    return obj;
+  }]).
+  directive('dsMapPlaces', ['$q', 'dsMapFactory', function($q, dsMapFactory) {
       var initialdsMapView = true,
         deferred = $q.defer(),
         obj = {
@@ -422,7 +424,8 @@
             if (scope.sortOption && scope.sortOption == "radius") {
               obj.radius = scope.radius || 5000;
             } else {
-              obj.rankBy = google.maps.places.RankBy.DISTANCE;
+              obj.radius = scope.radius || 10000;
+              obj.rankBy = google.maps.places.RankBy.PROMINENCE;
             }
 
             if (Object.prototype.toString.call(scope.types) == "[object Array]") {
@@ -456,49 +459,192 @@
       deferred.resolve();
 
       return obj;
-    }]).directive('dsEachPlace', [function() {
-      var obj = {
-        require: ["^?dsMap", "^?dsMapPlaces", "^?dsPlacesType"],
-        link: function(scope, element, attrs, dsMapControllers) {
-          var dsMapController = dsMapControllers[0],
-            dsMapPlacesController = dsMapControllers[1],
-            dsPlacesTypeController = dsMapControllers[2];
+    }]).
+  directive('dsEachPlace', [function() {
+    var obj = {
+      require: ["^?dsMap", "^?dsMapPlaces", "^?dsPlacesType"],
+      link: function(scope, element, attrs, dsMapControllers) {
+        var dsMapController = dsMapControllers[0],
+          dsMapPlacesController = dsMapControllers[1],
+          dsPlacesTypeController = dsMapControllers[2];
+        scope.index = 0;
 
-          if (scope.place) {
-            var placeLocation = scope.place.geometry.location,
-              clonedOptions = angular.copy(scope.options),
-              distanceThis = parseFloat(google.maps.geometry.spherical.computeDistanceBetween(dsMapController.getLocation(), placeLocation) / 1000).toFixed(1),
-              durationThis = parseInt(distanceThis * 42 / 3.5, 10);
+        if (scope.place) {
+          var placeLocation = scope.place.geometry.location,
+            clonedOptions = angular.copy(scope.options),
+            distanceThis = parseFloat(google.maps.geometry.spherical.computeDistanceBetween(dsMapController.getLocation(), placeLocation) / 1000).toFixed(1),
+            durationThis = parseInt(distanceThis * 42 / 3.5, 10);
 
-            if (clonedOptions === undefined) {
-              clonedOptions = {
-                position: placeLocation,
-                visible: true
+          if (clonedOptions === undefined) {
+            clonedOptions = {
+              position: placeLocation,
+              visible: true
+            };
+          } else if (Object.prototype.toString.call(clonedOptions) == "[object Object]") {
+            clonedOptions.position = placeLocation;
+            clonedOptions.visible = clonedOptions.visible === undefined ? true : clonedOptions.visible;
+          }
+
+          if (clonedOptions.visible) {
+            dsMapController.bounds.extend(placeLocation);
+          }
+
+          scope.place.distance = distanceThis;
+          scope.place.duration = durationThis;
+
+          dsMapController.mapRendered.then(function() {
+            var marker = setMarkerFunc(clonedOptions);
+            var infowindow = new google.maps.InfoWindow();
+
+            marker.addListener('mouseover', function() {
+              contentString = '<div><h4>' + scope.place.name + '</h4><span> Distance from origin : ' + scope.place.distance + ' km</span><br/><span> Duration : ' + scope.place.duration + ' min</span></div>';
+              infowindow.setContent(contentString);
+              infowindow.open(dsMapController.map, marker);
+              scope.showDirection();
+            });
+
+            marker.addListener('mouseout', function() {
+              contentString = '';
+              infowindow.setContent(contentString);
+              infowindow.close();
+            });
+
+            try {
+              dsMapController.placesGroupHash[scope.group].push(marker);
+            } catch (err) {
+              console.warn(err);
+            }
+          });
+        }
+      }
+    };
+
+    return obj;
+  }]).
+  directive('dsTravelMode', ['$q', '$timeout', function($q, $timeout) {
+    var obj = {
+      templateUrl: "dsTravelMode.html",
+      restrict: "E",
+      replace: true,
+      require: ["^?dsMap", "^?dsMapPlaces", "^?dsGroup"],
+      link: function(scope, element, attrs, dsMapControllers) {
+        var dsMapController = dsMapControllers[0],
+          dsMapPlacesController = dsMapControllers[1];
+
+        scope.errornolocation = false;
+
+        dsMapController.directionsService = new google.maps.DirectionsService();
+        dsMapController.directionsDisplay = new google.maps.DirectionsRenderer();
+        dsMapController.directionsDisplay.setMap(dsMapController.map);
+
+        var reqPromises = [];
+
+        var request = {};
+        var legs = {};
+        var transitMode;
+
+        scope.$watch('destination', function(newValue) {
+          scope.errornolocation = false;
+          if (newValue && scope.getalltravelmodedirection) {
+            scope.getalltravelmodedirection(JSON.parse(attrs.showDirection));
+          }
+        });
+
+        function getAllTravelModeDirectionFunc(showdirection) {
+          scope.travelModeResponse = [];
+
+          if (!scope.mapSearch) {
+            scope.errornolocation = true;
+            scope.autocompletelocationerror = "Er! Let's try the locality name again";
+            return;
+          }
+
+          if (!scope.destination && scope.mapSearch) {
+            scope.errornolocation = true;
+            scope.autocompletelocationerror = "Oops!! It seems flight is the only option";
+            return;
+          }
+
+          if (scope.destination && scope.destination.geometry && scope.destination.geometry.location) {
+            var placeLocation = scope.destination.geometry.location;
+          } else {
+            return;
+          }
+
+          if (!scope.errornolocation) {
+            angular.forEach(scope.travelMode, function(mode, key) {
+              var deferred = $q.defer();
+              reqPromises.push(deferred.promise);
+
+              request = {
+                origin: dsMapController.map.center,
+                destination: placeLocation,
+                travelMode: google.maps.TravelMode[mode],
+                unitSystem: google.maps.UnitSystem.METRIC,
+                optimizeWaypoints: true
               };
-            } else if (Object.prototype.toString.call(clonedOptions) == "[object Object]") {
-              clonedOptions.position = placeLocation;
-              clonedOptions.visible = clonedOptions.visible === undefined ? true : clonedOptions.visible;
-            }
 
-            if (clonedOptions.visible) {
-              dsMapController.bounds.extend(placeLocation);
-            }
 
-            scope.place.distance = distanceThis;
-            scope.place.duration = durationThis;
+              dsMapController.directionsService.route(request, function(response, status) {
+                if (status == google.maps.DirectionsStatus.OK) {
+                  $timeout(function() {
+                    legs = response.routes[0].legs[0];
 
-            dsMapController.mapRendered.then(function() {
-              var marker = setMarkerFunc(clonedOptions);
-              try {
-                dsMapController.placesGroupHash[scope.group].push(marker);
-              } catch (err) {
-                console.warn(err);
-              }
+                    if (response.request.travelMode === google.maps.TravelMode.DRIVING) {
+                      transitMode = 'car';
+                    } else if (response.request.travelMode === google.maps.TravelMode.TRANSIT) {
+                      transitMode = 'bus';
+                    } else if (response.request.travelMode === google.maps.TravelMode.WALKING) {
+                      transitMode = 'walking';
+                    }
+
+                    scope.travelModeResponse.push({
+                      "mode": transitMode,
+                      "distance": legs.distance.text,
+                      "duration": legs.duration.text,
+                      "result": response
+                    });
+
+                    deferred.resolve();
+                  }, 300);
+                } else if (status == google.maps.DirectionsStatus.ZERO_RESULTS) {
+                  deferred.resolve();
+                }
+              });
             });
           }
-        }
-      };
 
-      return obj;
-    }]);
+          $q.all(reqPromises).then(function() {
+            if (showdirection && scope.travelModeResponse.length > 0) {
+              scope.showtransitmodedirection(scope.travelModeResponse[0].result);
+            } else {
+              scope.errornolocation = true;
+              scope.autocompletelocationerror = "Oops!! It seems flight is the only option";
+            }
+          });
+
+        }
+
+        function showTransitModeDirectionFunc(response) {
+          dsMapController.directionsDisplay.setDirections(response);
+        }
+
+        if (dsMapController.isViewSet) {
+          dsMapPlacesController.dsMapPlacesLoaded(function() {
+            scope.getalltravelmodedirection = getAllTravelModeDirectionFunc;
+            scope.showtransitmodedirection = showTransitModeDirectionFunc;
+          });
+        } else {
+          scope.getalltravelmodedirection = getAllTravelModeDirectionFunc;
+        }
+      },
+      controller: ['$scope', function($scope) {
+        $scope.travelMode = ['DRIVING', 'TRANSIT', 'WALKING'];
+        $scope.travelModeResponse = [];
+        $scope.mapSearch;
+      }]
+    };
+
+    return obj;
+  }]);
 }(window, window.angular);
