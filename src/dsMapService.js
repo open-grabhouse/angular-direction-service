@@ -549,6 +549,10 @@
             scope.getalltravelmodedirection(JSON.parse(attrs.showDirection));
           }
         });
+        
+        scope.$watch('mapSearch', function(newValue) {
+          scope.destination = undefined;
+        });
 
         function getAllTravelModeDirectionFunc(showdirection) {
           scope.travelModeResponse = [];
