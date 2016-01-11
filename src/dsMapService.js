@@ -337,13 +337,15 @@
             types: "=",
             options: "=",
             sortOption: "@",
-            radius: "="
+            radius: "=",
+            mode: "@"
           },
           templateUrl: "dsMapPlaces.html",
           restrict: "E",
           replace: true,
           require: ["^?dsMap", "^?dsMapPlaces", "^?dsGroup"],
           link: function(scope, element, attrs, dsMapControllers) {
+
             var dsMapController = dsMapControllers[0],
               dsMapPlacesController = dsMapControllers[1],
               dsGroupController = dsMapControllers[2],
@@ -549,7 +551,7 @@
             scope.getalltravelmodedirection(JSON.parse(attrs.showDirection));
           }
         });
-        
+
         scope.$watch('mapSearch', function(newValue) {
           scope.destination = undefined;
         });
