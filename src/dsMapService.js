@@ -552,12 +552,15 @@
           }
         });
 
-        scope.$watch('mapSearch', function(newValue) {
-          scope.destination = undefined;
-        });
-
         function getAllTravelModeDirectionFunc(showdirection) {
-          scope.travelModeResponse = [];
+
+          var locationName = scope.mapSearch ? scope.mapSearch.split(',')[0] : '';
+          if (scope.destination) {
+            if (scope.destination.name.replace(/ /g, '').toLowerCase() !== locationName.replace(/ /g, '').toLowerCase()) {
+              scope.destination = undefined;
+            }
+            scope.travelModeResponse = [];
+          }
 
           if (!scope.mapSearch) {
             scope.errornolocation = true;
@@ -565,7 +568,7 @@
             return;
           }
 
-          if (!scope.destination && scope.mapSearch) {
+          if (!scope.destination) {
             scope.errornolocation = true;
             scope.autocompletelocationerror = "Oops!! It seems flight is the only option";
             return;
